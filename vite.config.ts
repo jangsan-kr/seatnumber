@@ -2,6 +2,14 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  base: '/seatnumber/', // <--- 저장소 이름과 동일하게 base 경로를 추가합니다.
+})
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
