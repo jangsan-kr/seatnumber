@@ -6,7 +6,7 @@ import { defineConfig } from 'vite'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(),tailwindcss()],
   base: '/seatnumber/', // <--- 저장소 이름과 동일하게 base 경로를 추가합니다.
 });
 
