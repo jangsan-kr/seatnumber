@@ -71,6 +71,8 @@ export default function App() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedClass, setSelectedClass] = useState(4);
   const [viewMode, setViewMode] = useState<'chart' | 'sheets'>('chart');
+  const [groupMode, setGroupMode] = useState(false);
+  const [shuffledIndices, setShuffledIndices] = useState<number[] | null>(null);
   const [hoveredSeat, setHoveredSeat] = useState<number | null>(null);
   const [activeNotice, setActiveNotice] = useState<'시' | '컴' | '정' | '이' | '종' | null>(null);
 
@@ -90,9 +92,63 @@ export default function App() {
     return Math.max(0, diff);
   }, [currentDate]);
 
-  const nextWeek = () => setCurrentDate(addWeeks(currentDate, 1));
-  const prevWeek = () => setCurrentDate(addWeeks(currentDate, -1));
-  const resetToToday = () => setCurrentDate(new Date());
+  const nextWeek = () => {
+    setCurrentDate(addWeeks(currentDate, 1));
+    setShuffledIndices(null);
+    setGroupMode(false);
+  };
+  const prevWeek = () => {
+    setCurrentDate(addWeeks(currentDate, -1));
+    setShuffledIndices(null);
+    setGroupMode(false);
+  };
+  const resetToToday = () => {
+    setCurrentDate(new Date());
+    setShuffledIndices(null);
+    setGroupMode(false);
+  };
+
+  // Grouping logic: Odd + Even
+  const shuffleGroups = () => {
+    const originalIndices: number[] = [];
+    CLASS_DATA[selectedClass].forEach((name, idx) => {
+      if (name !== "공석") {
+        originalIndices.push(idx);
+      }
+    });
+
+    const emptyIndices: number[] = [];
+    CLASS_DATA[selectedClass].forEach((name, idx) => {
+      if (name === "공석") emptyIndices.push(idx);
+    });
+
+    // Create pairs (Odd + Even from original list)
+    const pairs: number[][] = [];
+    for (let i = 0; i < originalIndices.length; i += 2) {
+      const g = [originalIndices[i]];
+      if (i + 1 < originalIndices.length) g.push(originalIndices[i+1]);
+      pairs.push(g);
+    }
+    
+    // Add empty spots as single groups
+    emptyIndices.forEach(idx => pairs.push([idx]));
+    
+    // Shuffle all these groups
+    const shuffledPairs = [...pairs].sort(() => Math.random() - 0.5);
+    const finalOrder = shuffledPairs.flat();
+    
+    setShuffledIndices(finalOrder);
+    setGroupMode(true);
+  };
+
+  const toggleGroupMode = () => {
+    if (groupMode) {
+      setGroupMode(false);
+      setShuffledIndices(null);
+    } else {
+      shuffleGroups();
+    }
+  };
 
   const downloadExcel = () => {
     const wb = XLSX.utils.book_new();
@@ -118,7 +174,14 @@ export default function App() {
   // Seat numbering logic (Counter-Clockwise Increasing)
   // Student S = (i - weekOffset) % 26 + 1 (CCW movement)
   const getStudentInfo = (physicalIndex: number) => {
-    const studentIndex = ((physicalIndex - weekOffset) % TOTAL_SEATS + TOTAL_SEATS) % TOTAL_SEATS;
+    let studentIndex: number;
+    
+    if (groupMode && shuffledIndices) {
+      studentIndex = shuffledIndices[physicalIndex];
+    } else {
+      studentIndex = ((physicalIndex - weekOffset) % TOTAL_SEATS + TOTAL_SEATS) % TOTAL_SEATS;
+    }
+
     const studentName = CLASS_DATA[selectedClass][studentIndex] || `학생 ${studentIndex + 1}`;
     
     if (studentName === "공석") {
@@ -217,35 +280,60 @@ export default function App() {
               ))}
             </div>
 
-            {/* Date Controls */}
-            <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200">
-              <button 
-                onClick={prevWeek}
-                className="p-2.5 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-600 active:scale-90"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              <div className="px-6 py-1.5 flex flex-col items-center min-w-[160px]">
-                <span className="text-sm font-black text-slate-700">
-                  {format(currentDate, 'yyyy년 M월', { locale: ko })} {Math.ceil(currentDate.getDate() / 7)}주차
-                </span>
-                <span className="text-[10px] text-slate-400 font-bold tracking-tighter">
-                  {weekOffset}주차 순환 적용됨
-                </span>
+            {/* Group Mode & Date Controls */}
+            <div className="flex items-center gap-2">
+              <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
+                <button
+                  onClick={toggleGroupMode}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-black transition-all ${
+                    groupMode 
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' 
+                      : 'text-slate-500 hover:text-slate-700 bg-white shadow-sm'
+                  }`}
+                >
+                  <Users size={16} />
+                  {groupMode ? '모듬 모드 ON' : '모듬 배치'}
+                </button>
+                {groupMode && (
+                  <button
+                    onClick={shuffleGroups}
+                    className="p-2 text-indigo-600 hover:text-indigo-800 transition-colors"
+                    title="다시 섞기"
+                  >
+                    <RotateCcw size={18} />
+                  </button>
+                )}
               </div>
-              <button 
-                onClick={nextWeek}
-                className="p-2.5 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-600 active:scale-90"
-              >
-                <ChevronRight size={20} />
-              </button>
-              <div className="w-px h-8 bg-slate-200 mx-1" />
-              <button 
-                onClick={resetToToday}
-                className="p-2.5 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-600 active:scale-90"
-              >
-                <RotateCcw size={18} />
-              </button>
+
+              <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200">
+                <button 
+                  onClick={prevWeek}
+                  className="p-2.5 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-600 active:scale-90"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <div className="px-6 py-1.5 flex flex-col items-center min-w-[160px]">
+                  <span className="text-sm font-black text-slate-700">
+                    {format(currentDate, 'yyyy년 M월', { locale: ko })} {Math.ceil(currentDate.getDate() / 7)}주차
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-bold tracking-tighter">
+                    {groupMode ? '모듬 랜덤 배치 적용됨' : `${weekOffset}주차 순환 적용됨`}
+                  </span>
+                </div>
+                <button 
+                  onClick={nextWeek}
+                  className="p-2.5 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-600 active:scale-90"
+                >
+                  <ChevronRight size={20} />
+                </button>
+                <div className="w-px h-8 bg-slate-200 mx-1" />
+                <button 
+                  onClick={resetToToday}
+                  className="p-2.5 hover:bg-white hover:shadow-sm rounded-xl transition-all text-slate-600 active:scale-90"
+                >
+                  <RotateCcw size={18} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -282,98 +370,235 @@ export default function App() {
         {/* View Mode Content */}
         {viewMode === 'chart' ? (
           <>
-            {/* Room Layout Container */}
-            <div className="relative bg-white rounded-[2rem] shadow-2xl shadow-slate-300/50 border border-slate-200/50 p-4 md:p-6 overflow-hidden">
-              {/* Background Grid Pattern */}
-              <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
-                   style={{ backgroundImage: 'radial-gradient(#6366f1 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+            {groupMode ? (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="relative bg-white rounded-[2rem] shadow-2xl shadow-slate-300/50 border border-slate-200/50 p-8 md:p-12 overflow-hidden min-h-[500px]"
+              >
+                {/* Background Grid Pattern */}
+                <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
+                     style={{ backgroundImage: 'radial-gradient(#6366f1 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
 
-              {/* Podium (Teacher's Desk) */}
-              <div className="flex justify-center mb-6 relative z-10">
-                <motion.div 
-                  initial={{ y: -10, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  className="w-48 h-16 bg-slate-900 rounded-2xl shadow-xl flex flex-col items-center justify-center border-b-[4px] border-slate-950"
-                >
-                  <div className="flex items-center gap-2 text-white mb-0.5">
-                    <User size={16} className="text-indigo-400" />
-                    <span className="font-black tracking-[0.2em] text-[10px]">교탁 (FRONT)</span>
-                  </div>
-                  <div className="flex w-full px-6 justify-between mt-0.5">
-                    <div className="flex flex-col items-center">
-                      <ChevronLeft size={10} className="text-slate-500" />
-                      <span className="text-[8px] text-slate-500 font-black uppercase">Right</span>
+                <div className="relative z-10">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+                    <div className="flex items-center gap-5">
+                      <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200">
+                        <Users className="text-white w-8 h-8" />
+                      </div>
+                      <div>
+                        <h2 className="text-3xl font-black text-slate-800 tracking-tight">활동 모듬 순서</h2>
+                        <p className="text-slate-400 text-sm font-bold uppercase tracking-[0.2em]">Randomized Group Sequence</p>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-center">
-                      <ChevronRight size={10} className="text-slate-500" />
-                      <span className="text-[8px] text-slate-500 font-black uppercase">Left</span>
-                    </div>
-                  </div>
-                </motion.div>
-              </div>
-
-              {/* Seating Area */}
-              <div className="relative flex flex-col items-center gap-4">
-                {/* Circular Seating */}
-                <div className="relative w-[260px] h-[260px] md:w-[400px] md:h-[400px]">
-                  {Array.from({ length: CIRCLE_SEATS_COUNT }).map((_, i) => {
-                    const openAngle = 0.2 * 2 * Math.PI;
-                    const availableAngle = 2 * Math.PI - openAngle;
-                    const startOffset = Math.PI / 2 + availableAngle / 2;
-                    const angle = startOffset - (i * availableAngle) / (CIRCLE_SEATS_COUNT - 1);
                     
-                    const radius = typeof window !== 'undefined' && window.innerWidth < 768 ? 120 : 180;
-                    const x = Math.cos(angle) * radius;
-                    const y = Math.sin(angle) * radius;
-
-                    const { num, name } = getStudentInfo(i);
-
-                    return (
-                      <Seat 
-                        key={`circle-${i}`}
-                        index={i}
-                        studentNum={num || 0}
-                        studentName={name}
-                        x={x}
-                        y={y}
-                        isHovered={hoveredSeat === i}
-                        onHover={() => setHoveredSeat(i)}
-                        onLeave={() => setHoveredSeat(null)}
-                      />
-                    );
-                  })}
-                  
-                  {/* Center Info */}
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-center bg-slate-50/50 backdrop-blur-sm p-4 rounded-full border border-slate-100">
-                      <div className="text-indigo-300 font-black text-[8px] mb-0.5 uppercase tracking-[0.3em]">Circle</div>
-                      <div className="text-slate-800 font-black text-3xl tracking-tighter">20</div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={shuffleGroups}
+                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl font-black transition-all shadow-xl shadow-indigo-100 hover:-translate-y-0.5 active:scale-95"
+                      >
+                        <RotateCcw size={18} />
+                        순서 다시 섞기
+                      </button>
+                      <button
+                        onClick={toggleGroupMode}
+                        className="p-3 bg-slate-100 text-slate-500 hover:text-slate-700 rounded-2xl transition-all"
+                        title="좌석 배치로 돌아가기"
+                      >
+                        <Layout size={20} />
+                      </button>
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {(() => {
+                      // Reconstruct groups from shuffledIndices or logic
+                      const groups: { num1: number | null, name1: string, num2?: number | null, name2?: string }[] = [];
+                      if (!shuffledIndices) return null;
+
+                      // We need to know which ones were pairs
+                      // Actually, the previous implementation flattened pairs then shuffled.
+                      // That's WRONG if we want to show pairs together.
+                      // Let's look at shuffleGroups again.
+                      // It shuffled the PAIRS, then flattened. So neighbors index i and i+1 are indeed the group.
+                      // WAIT: line 131: pairs.push(g); -> g has 1 or 2 elements.
+                      // line 138: finalOrder = shuffledPairs.flat();
+                      // This means finalOrder is just a flat list of student indices.
+                      
+                      // I should probably just iterate through the flattened list or use the original pairs.
+                      // Let's use the pairs logic here to render.
+                      
+                      // For rendering, I'll calculate pairs based on the same logic used to generate them
+                      let currentGroupIdx = 1;
+                      const renderedGroups = [];
+                      
+                      // Let's look at how shuffleGroups works. 
+                      // It constructs pairs, shuffles them, then flattens.
+                      // To render "Sequence of Groups", I'll just iterate through the flattened indices.
+                      // But how do I know if index i and i+1 belong together? 
+                      // The original logic paired [0,1], [2,3]... correctly.
+                      
+                      const studentInfos = shuffledIndices.map(idx => {
+                        const name = CLASS_DATA[selectedClass][idx];
+                        if (name === "공석") return { name, num: null };
+                        
+                        let count = 0;
+                        for (let i = 0; i <= idx; i++) {
+                          if (CLASS_DATA[selectedClass][i] !== "공석") count++;
+                        }
+                        return { name, num: count };
+                      });
+
+                      // Filter out empty spots for the "Sequence View" as it's cleaner
+                      const activeStudents = studentInfos.filter(s => s.name !== "공석");
+                      
+                      for (let i = 0; i < activeStudents.length; i += 2) {
+                        const s1 = activeStudents[i];
+                        const s2 = activeStudents[i+1];
+                        
+                        renderedGroups.push(
+                          <motion.div
+                            key={`group-${i}`}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.05 }}
+                            className="bg-slate-50 border border-slate-200 rounded-3xl p-6 flex flex-col items-center gap-4 hover:shadow-lg transition-all hover:bg-white hover:border-indigo-200 group"
+                          >
+                            <div className="flex items-center gap-3 w-full border-b border-slate-100 pb-3 mb-1">
+                              <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-black text-sm shadow-md shadow-indigo-100">
+                                {currentGroupIdx++}
+                              </div>
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">모듬</span>
+                            </div>
+                            
+                            <div className="flex items-center justify-center gap-6 w-full">
+                              <div className="flex flex-col items-center flex-1">
+                                <span className="text-indigo-600 font-black text-[10px] mb-1">{s1.num}번</span>
+                                <span className="text-lg font-black text-slate-800">{s1.name}</span>
+                              </div>
+                              
+                              {s2 ? (
+                                <>
+                                  <div className="w-px h-10 bg-slate-200" />
+                                  <div className="flex flex-col items-center flex-1">
+                                    <span className="text-indigo-600 font-black text-[10px] mb-1">{s2.num}번</span>
+                                    <span className="text-lg font-black text-slate-800">{s2.name}</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="flex-1" />
+                              )}
+                            </div>
+                          </motion.div>
+                        );
+                      }
+                      return renderedGroups;
+                    })()}
                   </div>
                 </div>
 
-                {/* Straight Seating (Back Row) */}
-                <div className="flex flex-row gap-2 md:gap-4 mt-2">
-                  {Array.from({ length: STRAIGHT_SEATS_COUNT }).map((_, i) => {
-                    const physicalIndex = CIRCLE_SEATS_COUNT + i;
-                    const { num, name } = getStudentInfo(physicalIndex);
+                {/* Bottom Guide */}
+                <div className="mt-12 p-6 bg-slate-900 rounded-3xl text-white/80 text-center relative z-10 overflow-hidden">
+                  <div className="absolute top-0 left-0 w-full h-full bg-indigo-500/5 pointer-events-none" />
+                  <p className="text-xs font-bold flex items-center justify-center gap-2">
+                    <Info size={14} className="text-indigo-400" />
+                    홀수 번호와 짝수 번호가 한 모듬으로 매칭되어 임의의 순서로 배치되었습니다.
+                  </p>
+                </div>
+              </motion.div>
+            ) : (
+              <div className="relative bg-white rounded-[2rem] shadow-2xl shadow-slate-300/50 border border-slate-200/50 p-4 md:p-6 overflow-hidden">
+                {/* Background Grid Pattern */}
+                <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
+                     style={{ backgroundImage: 'radial-gradient(#6366f1 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+
+                {/* Podium (Teacher's Desk) */}
+                <div className="flex justify-center mb-6 relative z-10">
+                  <motion.div 
+                    initial={{ y: -10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    className="w-48 h-16 bg-slate-900 rounded-2xl shadow-xl flex flex-col items-center justify-center border-b-[4px] border-slate-950"
+                  >
+                    <div className="flex items-center gap-2 text-white mb-0.5">
+                      <User size={16} className="text-indigo-400" />
+                      <span className="font-black tracking-[0.2em] text-[10px]">교탁 (FRONT)</span>
+                    </div>
+                    <div className="flex w-full px-6 justify-between mt-0.5">
+                      <div className="flex flex-col items-center">
+                        <ChevronLeft size={10} className="text-slate-500" />
+                        <span className="text-[8px] text-slate-500 font-black uppercase">Right</span>
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <ChevronRight size={10} className="text-slate-500" />
+                        <span className="text-[8px] text-slate-500 font-black uppercase">Left</span>
+                      </div>
+                    </div>
+                  </motion.div>
+                </div>
+
+                {/* Seating Area */}
+                <div className="relative flex flex-col items-center gap-4">
+                  {/* Circular Seating */}
+                  <div className="relative w-[260px] h-[260px] md:w-[400px] md:h-[400px]">
+                    {Array.from({ length: CIRCLE_SEATS_COUNT }).map((_, i) => {
+                      const openAngle = 0.2 * 2 * Math.PI;
+                      const availableAngle = 2 * Math.PI - openAngle;
+                      const startOffset = Math.PI / 2 + availableAngle / 2;
+                      const angle = startOffset - (i * availableAngle) / (CIRCLE_SEATS_COUNT - 1);
+                      
+                      const radius = typeof window !== 'undefined' && window.innerWidth < 768 ? 120 : 180;
+                      const x = Math.cos(angle) * radius;
+                      const y = Math.sin(angle) * radius;
+
+                      const { num, name } = getStudentInfo(i);
+
+                      return (
+                        <Seat 
+                          key={`circle-${i}`}
+                          index={i}
+                          studentNum={num || 0}
+                          studentName={name}
+                          x={x}
+                          y={y}
+                          isHovered={hoveredSeat === i}
+                          onHover={() => setHoveredSeat(i)}
+                          onLeave={() => setHoveredSeat(null)}
+                        />
+                      );
+                    })}
                     
-                    return (
-                      <Seat 
-                        key={`straight-${i}`}
-                        index={physicalIndex}
-                        studentNum={num || 0}
-                        studentName={name}
-                        isHovered={hoveredSeat === physicalIndex}
-                        onHover={() => setHoveredSeat(physicalIndex)}
-                        onLeave={() => setHoveredSeat(null)}
-                        isStraight
-                      />
-                    );
-                  })}
+                    {/* Center Info */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="text-center bg-slate-50/50 backdrop-blur-sm p-4 rounded-full border border-slate-100">
+                        <div className="text-indigo-300 font-black text-[8px] mb-0.5 uppercase tracking-[0.3em]">Circle</div>
+                        <div className="text-slate-800 font-black text-3xl tracking-tighter">20</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Straight Seating (Back Row) */}
+                  <div className="flex flex-row gap-2 md:gap-4 mt-2">
+                    {Array.from({ length: STRAIGHT_SEATS_COUNT }).map((_, i) => {
+                      const physicalIndex = CIRCLE_SEATS_COUNT + i;
+                      const { num, name } = getStudentInfo(physicalIndex);
+                      
+                      return (
+                        <Seat 
+                          key={`straight-${i}`}
+                          index={physicalIndex}
+                          studentNum={num || 0}
+                          studentName={name}
+                          isHovered={hoveredSeat === physicalIndex}
+                          onHover={() => setHoveredSeat(physicalIndex)}
+                          onLeave={() => setHoveredSeat(null)}
+                          isStraight
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Info Cards */}
             <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
